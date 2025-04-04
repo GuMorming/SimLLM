@@ -114,23 +114,20 @@ class LlamaAttentionBase(_LlamaAttention):
             value_states = torch.cat(value_states, dim=-1)
 
         else:
-            # 先算出q来
+            
             query_states = self.q_proj(hidden_states)
 
             if len(kv_manager.coordinates) > 0:
-                # print('[AttentionBase] _get_qkv')
-                # print(kv_manager.coordinates)
-                # 提取所有的j值，并去重后排序（逆序）
+     
                 indices_to_delete = sorted(set(j for i, j in kv_manager.coordinates), reverse=True)
 
-                # 去除掉待替换的元素行
-                # print('before hidden_states.shape=', hidden_states.shape)
+
                 for j in indices_to_delete:
                     hidden_states = torch.cat((hidden_states[:j], hidden_states[j + 1:]), dim=0)
                     n_bsz -= 1
-                # print('after hidden_states.shape=', hidden_states.shape)
 
-                # 计算出未替换行的 k，v
+
+
                 key_states = self.k_proj(hidden_states)
                 value_states = self.v_proj(hidden_states)
 
@@ -152,22 +149,19 @@ class LlamaAttentionBase(_LlamaAttention):
         # value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
         ###############################################################
-        # 用最后一层进行替换
+
         if len(kv_manager.coordinates) > 0:
-            # coordinates 中 元素(i,j)中，
-            # i为hidden_states删除位置，j为key_cache插入位置，
-            # i,j取值范围均为0-batch_size
-            # 把 key_cache_i 插入到 key_states中 j的位置
+
             for i, j in kv_manager.coordinates:
                 key_cache_i = kv_manager.key_cache[i].unsqueeze(0)
                 value_cache_i = kv_manager.value_cache[i].unsqueeze(0)
-                # 替换
+
                 key_states = torch.cat((key_states[:j], key_cache_i, key_states[j:]), dim=0)
                 value_states = torch.cat((value_states[:j], value_cache_i, value_states[j:]), dim=0)
-                # print('key_states.shape=', key_states.shape)
+
                 if key_states.shape[0] == bsz:
                     break
-            # print('替换完成 at layer ', self.layer_idx)
+
         ############################################################################
 
         kv_seq_len = key_states.shape[-2]
@@ -424,19 +418,14 @@ class LlamaFlashAttention2Base(_LlamaFlashAttention2):
         query_states = self.q_proj(hidden_states)
 
         if len(kv_manager.coordinates) > 0:
-            # print('[AttentionBase] _get_qkv')
-            # print(kv_manager.coordinates)
-            # 提取所有的j值，并去重后排序（逆序）
+
             indices_to_delete = sorted(set(j for i, j in kv_manager.coordinates), reverse=True)
 
-            # 去除掉待替换的元素行
-            # print('before hidden_states.shape=', hidden_states.shape)
+
             for j in indices_to_delete:
                 hidden_states = torch.cat((hidden_states[:j], hidden_states[j + 1:]), dim=0)
                 n_bsz -= 1
-            # print('after hidden_states.shape=', hidden_states.shape)
 
-            # 计算出未替换行的 k，v
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
 
@@ -461,22 +450,19 @@ class LlamaFlashAttention2Base(_LlamaFlashAttention2):
         # value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
         ###############################################################
-        # 用最后一层进行替换
+
         if len(kv_manager.coordinates) > 0:
-            # coordinates 中 元素(i,j)中，
-            # i为hidden_states删除位置，j为key_cache插入位置，
-            # i,j取值范围均为0-batch_size
-            # 把 key_cache_i 插入到 key_states中 j的位置
+
             for i, j in kv_manager.coordinates:
                 key_cache_i = kv_manager.key_cache[i].unsqueeze(0)
                 value_cache_i = kv_manager.value_cache[i].unsqueeze(0)
-                # 替换
+
                 key_states = torch.cat((key_states[:j], key_cache_i, key_states[j:]), dim=0)
                 value_states = torch.cat((value_states[:j], value_cache_i, value_states[j:]), dim=0)
-                # print('key_states.shape=', key_states.shape)
+
                 if key_states.shape[0] == bsz:
                     break
-            # print('[Base]替换完成 at layer ')
+
         ############################################################################
 
         kv_seq_len = key_states.shape[-2]
@@ -601,16 +587,9 @@ class LlamaFlashAttention2Base(_LlamaFlashAttention2):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
-        # TODO: llama does not have dropout in the config??
-        # It is recommended to use dropout with FA according to the docs
-        # when training.
-        dropout_rate = 0.0  # if not self.training else self.attn_dropout
 
-        # In PEFT, usually we cast the layer norms in float32 for training stability reasons
-        # therefore the input hidden states gets silently casted in float32. Hence, we need
-        # cast them back in the correct dtype just to be sure everything works as expected.
-        # This might slowdown training & inference so it is recommended to not cast the LayerNorms
-        # in fp32. (LlamaRMSNorm handles it correctly)
+        dropout_rate = 0.0  
+
 
         input_dtype = query_states.dtype
         if input_dtype == torch.float32:
@@ -620,11 +599,6 @@ class LlamaFlashAttention2Base(_LlamaFlashAttention2):
             else:
                 target_dtype = self.q_proj.weight.dtype
 
-            # logger.warning_once(
-            #     f"The input hidden states seems to be silently casted in float32, this might be related to"
-            #     f" the fact you have upcasted embedding or layer norm layers in float32. We will cast back the input in"
-            #     f" {target_dtype}."
-            # )
 
             query_states = query_states.to(target_dtype)
             key_states = key_states.to(target_dtype)
@@ -678,30 +652,20 @@ class LlamaFlashAttention2Base(_LlamaFlashAttention2):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
-        # TODO: llama does not have dropout in the config??
-        # It is recommended to use dropout with FA according to the docs
-        # when training.
-        dropout_rate = 0.0  # if not self.training else self.attn_dropout
 
-        # In PEFT, usually we cast the layer norms in float32 for training stability reasons
-        # therefore the input hidden states gets silently casted in float32. Hence, we need
-        # cast them back in the correct dtype just to be sure everything works as expected.
-        # This might slowdown training & inference so it is recommended to not cast the LayerNorms
-        # in fp32. (LlamaRMSNorm handles it correctly)
+        dropout_rate = 0.0 
+
+
 
         input_dtype = query_states.dtype
         if input_dtype == torch.float32:
-            # Handle the case where the model is quantized
+
             if hasattr(self.config, "_pre_quantization_dtype"):
                 target_dtype = self.config._pre_quantization_dtype
             else:
                 target_dtype = self.q_proj.weight.dtype
 
-            # logger.warning_once(
-            #     f"The input hidden states seems to be silently casted in float32, this might be related to"
-            #     f" the fact you have upcasted embedding or layer norm layers in float32. We will cast back the input in"
-            #     f" {target_dtype}."
-            # )
+
 
             query_states = query_states.to(target_dtype)
             key_states = key_states.to(target_dtype)
@@ -732,7 +696,7 @@ class LlamaAttention(LlamaAttentionBase):
             **kwargs,
     ):
         if encoder_outputs is not None and past_key_value is not None:
-            # print('encoder and past kv')
+
             output = self._get_qkv_encoder_and_cache(
                 hidden_states,
                 position_ids,
@@ -743,7 +707,7 @@ class LlamaAttention(LlamaAttentionBase):
                 **kwargs
             )
         elif encoder_outputs is not None:
-            # print('just encoder')
+
             output = self._get_qkv_encoder(
                 hidden_states,
                 position_ids,
@@ -754,7 +718,7 @@ class LlamaAttention(LlamaAttentionBase):
                 **kwargs
             )
         else:
-            # print('just past kv')
+
             output = self._get_qkv_cache(
                 hidden_states,
                 position_ids,
@@ -1060,17 +1024,14 @@ class LlamaAttentionMiddle(LlamaAttention):
         query_states = apply_rotary_pos_emb_q(query_states, cos, sin, position_ids)
 
         if len(kv_manager.coordinates) > 0:
-            # 提取所有的j值，并去重后排序（逆序）
+
             indices_to_delete = sorted(set(j for i, j in kv_manager.coordinates), reverse=True)
 
-            # 去除掉待替换的元素行
-            # print('before hidden_states.shape=', hidden_states.shape)
+
             for j in indices_to_delete:
                 hidden_states = torch.cat((hidden_states[:j], hidden_states[j + 1:]), dim=0)
                 n_bsz -= 1
-            # print('after hidden_states.shape=', hidden_states.shape)
 
-            # 计算出未替换行的 k，v
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
 
@@ -1088,21 +1049,18 @@ class LlamaAttentionMiddle(LlamaAttention):
         # past_key_value = None
 
         ###############################################################
-        # 用最后一层进行替换
+
         if len(kv_manager.coordinates) > 0:
-            # coordinates 中 元素(i,j)中，
-            # i为hidden_states删除位置，j为key_cache插入位置，
-            # i,j取值范围均为0-batch_size
-            # 把 key_cache_i 插入到 key_states中 j的位置
+
             for i, j in kv_manager.coordinates:
                 key_cache_i = kv_manager.key_cache[i].unsqueeze(0)
                 value_cache_i = kv_manager.value_cache[i].unsqueeze(0)
-                # 替换
+
                 key_states = torch.cat((key_states[:j], key_cache_i, key_states[j:]), dim=0)
                 value_states = torch.cat((value_states[:j], value_cache_i, value_states[j:]), dim=0)
                 if key_states.shape[0] == bsz:
                     break
-            # print('替换完成 at layer ', self.layer_idx)
+
         ############################################################################
 
         return query_states, key_states, value_states, kv_seq_len, past_key_value
@@ -1224,17 +1182,14 @@ class LlamaFlashAttention2Middle(LlamaFlashAttention2):
 
         # print(f'coordinates={kv_manager.coordinates}')
         if len(kv_manager.coordinates) > 0:
-            # 提取所有的j值，并去重后排序（逆序）
+
             indices_to_delete = sorted(set(j for i, j in kv_manager.coordinates), reverse=True)
 
-            # 去除掉待替换的元素行
-            # print('before hidden_states.shape=', hidden_states.shape)
+
             for j in indices_to_delete:
                 hidden_states = torch.cat((hidden_states[:j], hidden_states[j + 1:]), dim=0)
                 n_bsz -= 1
-            # print('after hidden_states.shape=', hidden_states.shape)
 
-            # 计算出未替换行的 k，v
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
 
@@ -1252,21 +1207,18 @@ class LlamaFlashAttention2Middle(LlamaFlashAttention2):
         # past_key_value = None
 
         ###############################################################
-        # 用最后一层进行替换
+
         if len(kv_manager.coordinates) > 0:
-            # coordinates 中 元素(i,j)中，
-            # i为hidden_states删除位置，j为key_cache插入位置，
-            # i,j取值范围均为0-batch_size
-            # 把 key_cache_i 插入到 key_states中 j的位置
+
             for i, j in kv_manager.coordinates:
                 key_cache_i = kv_manager.key_cache[i].unsqueeze(0)
                 value_cache_i = kv_manager.value_cache[i].unsqueeze(0)
-                # 替换
+
                 key_states = torch.cat((key_states[:j], key_cache_i, key_states[j:]), dim=0)
                 value_states = torch.cat((value_states[:j], value_cache_i, value_states[j:]), dim=0)
                 if key_states.shape[0] == bsz:
                     break
-            # print('[Middle]替换完成 at layer ')
+
         ############################################################################
 
         return query_states, key_states, value_states, kv_seq_len, past_key_value
@@ -1364,7 +1316,7 @@ class LlamaDecoderLayer(_LlamaDecoderLayer):
             else:
                 raise ValueError(f"Unknown layer type: {layer_type}")
         else:
-            # todo flash_attn
+            # flash_attn
             if layer_type == 0:
                 return LlamaFlashAttention2Base
             elif layer_type == 1:
@@ -1546,7 +1498,7 @@ class LlamaModel(_LlamaModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         ################################################################################################################
-        # 若还未保存kv，跳过
+ 
         if len(kv_manager.inputs_embeds) == 0:
             pass
         # 存在已经保存的kv，比较当前 input 与已保存kv的相似度
@@ -1555,49 +1507,45 @@ class LlamaModel(_LlamaModel):
                 # print('inputs_embeds.shape = ', inputs_embeds.shape)
                 batch_size = inputs_embeds.shape[0]
                 # minhash = MinHash()
-                # print(f'kv.input_embeds.shape={kv_manager.inputs_embeds.shape}')
+
                 # candidates = kv_manager.inputs_embeds.view(kv_manager.inputs_embeds.shape[0], -1)
-                # print(f'candidates={candidates.shape}')
+
                 # candidates = candidates.tolist()
                 # query = inputs_embeds.view(batch_size, -1).tolist()
-                # print(f'query={query.shape}')
+
 
                 # for j in range(batch_size):
                 #     result = minhash.search(candidates, query[j])
                 #     for i in result:
                 #         kv_manager.coordinates.append((i,j))
-                # print('kv_manager.inputs_embeds.shape=', kv_manager.inputs_embeds.shape)
+
                 for i in range(kv_manager.inputs_embeds.shape[0]):
                     saved_embed = kv_manager.inputs_embeds[i]
                     # print('saved_embed.shape=', saved_embed.shape)
                     for j in range(batch_size):
-                        # 比较相似度
+     
                         now_embed = inputs_embeds[j]
-                        # print('now_embed.shape = ', now_embed.shape)
-                        # 由于 tokenizer padding 通常末尾几个 token 为<EOS>,故末尾几个similairy值为1.00，无意义
-                        # 乘上 attention_mask 来去除
-                        # todo similarity lsh
+
                         similarity = torch.cosine_similarity(now_embed, saved_embed, dim=-1)
                         similarity = similarity * attention_mask[j]
                         similarity = similarity.sum() / attention_mask[j].sum()
-                        # print('similarity=', similarity)
-                        # 相似度超过阈值，则记录下对应坐标
+
                         if similarity >= kv_manager.threshold:
                             kv_manager.coordinates.append((i, j))
                             break
-                # print('coordinates=', kv_manager.coordinates)
-        # 保留唯一相似
-        # kv_manager.coordinates = filter_and_keep_random_duplicate_j(kv_manager.coordinates)
+
+
+
 
         if kv_manager.eviction_mode == 'FIFO':
             pass
         else:
-            # LRU 将待复制的设置为 1 说明将访问
+
             for i, j in kv_manager.coordinates:
                 if i >= kv_manager.max_length:
                     break
                 kv_manager.eviction_idx[i] = 1
-        # print('coordinates=', kv_manager.coordinates)
+
         ################################################################################################################
 
         if getattr(self.config, "_flash_attn_2_enabled", False):
@@ -1773,9 +1721,7 @@ class LlamaForCausalLM(_LlamaForCausalLM):
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
         ```"""
-        # todo  1.保存 embedding 的 hash
-        # todo  2.替换
-        # todo  3. 搜索
+
         # if kv_manager is None:
         #     kv_manager = self.kv_manager
         if input_ids is not None:
@@ -2219,46 +2165,42 @@ class LlamaForCausalLM(_LlamaForCausalLM):
         )
 
         ####################################################################################################
-        # 在更新kv cache前 把相似性关系去除
+
         if len(kv_manager.coordinates) > 0:
             kv_manager.coordinates.clear()
-        # 'past_key_values' stores the Key and Value states as a list of tensors, one for each layer.
-        # 在这里 past_key_values 有 32 个元素（共32层）
-        # The expected shape for each tensor is `[batch_size, num_heads, seq_len, head_dim]`.
+
         past_key_values = outputs.past_key_values
-        # 1. 获取输入embedding shape=[batch_size, input_ids.__len__, dim of embedding]
+
         inputs_embeds = self.model.embed_tokens(input_ids)  # [batch_size, seq_len, embedding_dim]
         if inputs_embeds.dim() == 2:
             inputs_embeds = inputs_embeds.unsqueeze(1)
-        # 2.把embedding和最后一层的key_cache,value_cache拼起来
-        #   先判断 dim=1的 shape 是否为 1， 不为 1 说明是首次输入，否则已经进入自回归阶段
+
         inputs_embeds_cache = {}
         batch_size = inputs_embeds.shape[0]
         if inputs_embeds.shape[1] != 1 and past_key_values is not None:
-            # print("首次输入，准备更新kv cache")
+        
             # key_cache = past_key_values[31][0]  # [batch_size, num_heads, seq_len, head_dim]
             # value_cache = past_key_values[31][1]  # [batch_size, num_heads, seq_len, head_dim]
             inputs_embeds_cache['inputs_embeds'] = inputs_embeds
             inputs_embeds_cache['kv_cache'] = past_key_values[-2]
 
-            # 若还没有保存KVCache，
+
             if len(kv_manager.key_cache) == 0:
                 # print('kv cache empty')
                 kv_manager.inputs_embeds = inputs_embeds_cache['inputs_embeds']
                 kv_manager.key_cache = inputs_embeds_cache['kv_cache'][0]
                 kv_manager.value_cache = inputs_embeds_cache['kv_cache'][1]
-            # 若还可以继续存储
+
             elif len(kv_manager.key_cache) < kv_manager.max_length:
                 # print('kv cache append')
-                # 在 batch_size 所在维度（dim=0）拼接
+
                 kv_manager.inputs_embeds = torch.cat((kv_manager.inputs_embeds, inputs_embeds_cache['inputs_embeds']),
                                                      0)
                 kv_manager.key_cache = torch.cat((kv_manager.key_cache, inputs_embeds_cache['kv_cache'][0]), 0)
                 kv_manager.value_cache = torch.cat((kv_manager.value_cache, inputs_embeds_cache['kv_cache'][1]), 0)
-            # 缓存长度达到上限，对缓存进行替换（FIFO / LRU）
+
             else:
-                # 对于 eviction_idx 中的每个对应的 inputs_embeds, key_cache,value_cache，都将其淘汰并替换为
-                # print('kv cache eviction')
+
                 # FIFO
                 if kv_manager.eviction_mode == 'FIFO':
                     for i in range(batch_size):
@@ -2266,7 +2208,7 @@ class LlamaForCausalLM(_LlamaForCausalLM):
                         kv_manager.inputs_embeds[idx] = inputs_embeds_cache['inputs_embeds'][i]
                         kv_manager.key_cache[idx] = inputs_embeds_cache['kv_cache'][0][i]
                         kv_manager.value_cache[idx] = inputs_embeds_cache['kv_cache'][1][i]
-                        # 更新 每个 idx, 为下次eviction 作准备
+
                         kv_manager.eviction_idx[i] = (kv_manager.eviction_idx[i] + batch_size) % kv_manager.max_length
                 # LRU
                 else:
@@ -2280,7 +2222,7 @@ class LlamaForCausalLM(_LlamaForCausalLM):
                                 num += 1
                             else:
                                 break
-                        # 若上述循环遍历了整个eviction_idx 说明全部被访问过，直接替换第0个元素即可
+
                         if num == kv_manager.max_length:
                             idx = 0
                         kv_manager.inputs_embeds[idx] = inputs_embeds_cache['inputs_embeds'][i]
